@@ -215,9 +215,9 @@ const PERF = PERF_MODE === 'high'
       pixelRatioMax: 1.6,
       starCount: 1200,
       nodeCountScale: 1,
-  terminalCanvas: { w: 352, h: 176 },
-      terminalRefreshBase: 0.45,
-      terminalRefreshCompromised: 0.2,
+      terminalCanvas: { w: 352, h: 176 },
+      terminalRefreshBase: 0.9,
+      terminalRefreshCompromised: 0.4,
       spawnBurstScale: 1,
       spawnRateScale: 1,
       maxPackets: 220,
@@ -235,8 +235,8 @@ const PERF = PERF_MODE === 'high'
       starCount: 520,
       nodeCountScale: 0.72,
       terminalCanvas: { w: 224, h: 112 },
-      terminalRefreshBase: 1.1,
-      terminalRefreshCompromised: 0.55,
+      terminalRefreshBase: 1.6,
+      terminalRefreshCompromised: 0.8,
       spawnBurstScale: 0.75,
       spawnRateScale: 1.2,
       maxPackets: 110,
@@ -954,10 +954,10 @@ function startLevel(mode = 'fresh') {
     const events = lvl.terminalEvents
     const [sev, msg] = events[Math.floor(Math.random() * events.length)]
     pushLine(sev, msg)
-  }, 2200)
+  }, 3800)
   telemetryIntervalId = setInterval(() => {
     pushAutoTelemetry(lvl)
-  }, 520)
+  }, 1400)
   startThreatIntelFeed()
 }
 
@@ -966,6 +966,77 @@ startLevel('fresh')
 initLiveCameraFeed()
 armAudioGestureUnlock()
 
+/* ── Particle System & Custom Cursor ──────────────────────────────────── */
+const cursorTrail = {
+  particles: [],
+  reticle: null,
+  mouseX: window.innerWidth / 2,
+  mouseY: window.innerHeight / 2,
+  targetX: window.innerWidth / 2,
+  targetY: window.innerHeight / 2,
+}
+
+function initCursorEffects() {
+  // Create reticle element
+  const reticle = document.createElement('div')
+  reticle.className = 'cursor-reticle'
+  reticle.style.display = 'none'
+  document.body.appendChild(reticle)
+  cursorTrail.reticle = reticle
+
+  // Track mouse position
+  document.addEventListener('mousemove', (e) => {
+    cursorTrail.targetX = e.clientX
+    cursorTrail.targetY = e.clientY
+    
+    // Create particle on movement
+    if (Math.random() < 0.5) {
+      const particle = document.createElement('div')
+      particle.className = 'cursor-particle'
+      const size = 3 + Math.random() * 6
+      particle.style.left = (e.clientX - size / 2) + 'px'
+      particle.style.top = (e.clientY - size / 2) + 'px'
+      particle.style.width = size + 'px'
+      particle.style.height = size + 'px'
+      particle.style.background = Math.random() < 0.6 
+        ? 'radial-gradient(circle, rgba(114, 244, 255, 0.8), transparent)'
+        : 'radial-gradient(circle, rgba(72, 219, 251, 0.6), transparent)'
+      particle.style.opacity = '1'
+      document.body.appendChild(particle)
+      
+      cursorTrail.particles.push({
+        el: particle,
+        x: e.clientX,
+        y: e.clientY,
+        vx: (Math.random() - 0.5) * 2,
+        vy: (Math.random() - 0.5) * 2,
+        life: 1,
+        size: size,
+      })
+    }
+  })
+
+  document.addEventListener('mouseenter', () => {
+    if (cursorTrail.reticle) cursorTrail.reticle.style.display = 'block'
+  })
+
+  document.addEventListener('mouseleave', () => {
+    if (cursorTrail.reticle) cursorTrail.reticle.style.display = 'none'
+  })
+
+  // Trigger chromatic effect on threat
+  setInterval(() => {
+    if (attackIntensity > 0.6 && Math.random() < 0.15) {
+      const app = document.querySelector('#app')
+      app.classList.add('chromatic')
+      setTimeout(() => app.classList.remove('chromatic'), 150)
+    }
+  }, 400)
+}
+
+initCursorEffects()
+updateCursorTrail()
+
 window.addEventListener('pointermove', () => {}) // no-op
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight
@@ -973,6 +1044,43 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight)
   composer.setSize(window.innerWidth, window.innerHeight)
 })
+
+function updateCursorTrail() {
+  if (cursorTrail.reticle) {
+    cursorTrail.mouseX += (cursorTrail.targetX - cursorTrail.mouseX) * 0.18
+    cursorTrail.mouseY += (cursorTrail.targetY - cursorTrail.mouseY) * 0.18
+    cursorTrail.reticle.style.left = cursorTrail.mouseX + 'px'
+    cursorTrail.reticle.style.top = cursorTrail.mouseY + 'px'
+
+    // Add threat glow
+    if (attackIntensity > 0.65) {
+      cursorTrail.reticle.classList.add('target')
+    } else {
+      cursorTrail.reticle.classList.remove('target')
+    }
+  }
+
+  // Update particles
+  for (let i = cursorTrail.particles.length - 1; i >= 0; i--) {
+    const p = cursorTrail.particles[i]
+    p.life -= 0.04
+    p.x += p.vx
+    p.y += p.vy
+    p.vy += 0.15 // gravity
+
+    if (p.life <= 0) {
+      p.el.style.opacity = '0'
+      setTimeout(() => {
+        if (p.el.parentNode) p.el.parentNode.removeChild(p.el)
+      }, 300)
+      cursorTrail.particles.splice(i, 1)
+    } else {
+      p.el.style.left = (p.x - p.size / 2) + 'px'
+      p.el.style.top = (p.y - p.size / 2) + 'px'
+      p.el.style.opacity = p.life.toString()
+    }
+  }
+}
 
 const clock = new THREE.Clock()
 let frameIndex = 0
@@ -1143,6 +1251,7 @@ function animate(now = 0) {
     glitchTitleEl.style.setProperty('--audio-level', String(audioEnergy.toFixed(3)))
   }
   setThreatHud()
+  updateCursorTrail()
   composer.render()
   requestAnimationFrame(animate)
 }
